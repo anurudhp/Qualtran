@@ -52,7 +52,7 @@ def test_permutation_cycle_unitary_and_call_graph():
 
 
 def test_permutation_unitary_and_call_graph():
-    bloq = Permutation(7, np.array([1, 2, 0, 4, 3, 5, 6]))
+    bloq = Permutation(np.array([1, 2, 0, 4, 3, 5, 6]))
 
     np.testing.assert_allclose(
         bloq.tensor_contract(),

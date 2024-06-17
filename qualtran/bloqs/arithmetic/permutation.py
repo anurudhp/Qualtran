@@ -156,11 +156,7 @@ class PermutationCycle(Bloq):
 
     @cached_property
     def dtype(self):
-        return BoundedQUInt(self.bitsize, self.N)
-
-    @cached_property
-    def bitsize(self):
-        return bit_length(self.N - 1)
+        return BoundedQUInt(bit_length(self.N - 1), self.N)
 
     def is_symbolic(self):
         return is_symbolic(self.N, self.cycle)
@@ -175,7 +171,7 @@ class PermutationCycle(Bloq):
             q, a = bb.add_t(EqualK(self.dtype, x_k), x=q, result=a)
 
             delta = x_k ^ self.cycle[(k + 1) % len(self.cycle)]
-            a, q = bb.add_t(XorK(self.bitsize, delta).controlled(), ctrl=a, x=q)
+            a, q = bb.add_t(XorK(self.dtype.bitsize, delta).controlled(), ctrl=a, x=q)
 
         q, a = bb.add_t(EqualK(self.dtype, self.cycle[0]), x=q, result=a)
 
@@ -189,7 +185,7 @@ class PermutationCycle(Bloq):
             cycle_len = slen(self.cycle)
             return {
                 (EqualK(self.dtype, x), cycle_len + 1),
-                (XorK(self.bitsize, x).controlled(), cycle_len),
+                (XorK(self.dtype.bitsize, x).controlled(), cycle_len),
             }
 
         return super().build_call_graph(ssa)
@@ -209,20 +205,17 @@ class PermutationCycle(Bloq):
 
 def _decompose_permutation_into_cycles(permutation: Sequence[int]) -> Iterator[NDArray[np.integer]]:
     """Generate all non-trivial (more than one element) cycles of a permutation of [0, ..., N - 1]"""
-    d = len(permutation)
-    seen = np.full(d, False)
+    N = len(permutation)
+    seen = np.full(N, False)
 
-    for i in range(d):
-        if seen[i]:
-            continue
-
+    for i in range(N):
         idx, cycle = i, []
-        while idx < d and not seen[idx]:
+        while not seen[idx]:
             seen[idx] = True
-            idx = permutation[idx]
             cycle.append(idx)
+            idx = permutation[idx]
 
-        if len(cycle) > 1:
+        if len(cycle) >= 2:
             yield np.array(cycle)
 
 
@@ -230,23 +223,20 @@ def _decompose_permutation_into_cycles(permutation: Sequence[int]) -> Iterator[N
 class Permutation(Bloq):
     """Apply a permutation of [0, N - 1] on the basis states"""
 
-    N: SymbolicInt
     permutation: Union[NDArray[np.integer], Shaped] = field(
         eq=lambda x: x if isinstance(x, Shaped) else tuple(x.flatten())
     )
 
-    def __attrs_post_init__(self):
-        N = self.N
-        permutation_length = slen(self.permutation)
-        if not is_symbolic(N, permutation_length):
-            assert permutation_length <= N, f"{permutation_length=} out of bounds for limit {N=}"
+    @cached_property
+    def N(self):
+        return slen(self.permutation)
 
     @cached_property
     def signature(self) -> Signature:
         return Signature.build_from_dtypes(q=BoundedQUInt(bit_length(self.N - 1), self.N))
 
     def is_symbolic(self):
-        return is_symbolic(self.N, self.permutation)
+        return is_symbolic(self.permutation)
 
     def build_composite_bloq(self, bb: 'BloqBuilder', q: 'Soquet') -> dict[str, 'SoquetT']:
         if self.is_symbolic():
@@ -279,5 +269,5 @@ def _permutation_cycle() -> PermutationCycle:
 
 @bloq_example
 def _permutation() -> Permutation:
-    permutation = Permutation(4, np.array([1, 3, 0, 2]))
+    permutation = Permutation(np.array([1, 3, 0, 2]))
     return permutation
